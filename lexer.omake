@@ -1,0 +1,101 @@
+// Omake meta programming language compiler.
+// Copyright (C) 2018  Ilmir Usmanov
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+module omake.lexer
+
+import {
+  omake.error
+  omake.input
+}
+
+data Input : InputRange
+
+data Token(locus = Locus)
+          = Whitespace
+          | LeftParen
+          | RightParen
+          | Assign
+          | Arrow
+          | Comma
+          | Data
+          | Module
+          | Imports
+          | LeftSquare
+          | RightSquare
+          | Identifier(string)
+          | Char(char)
+          | String(string)
+          | Dot
+          | Or
+          | Star
+          | Query
+          | Plus
+          | Raw(string)
+          | NewLine
+          | Not
+
+scan : (Input) -> Token[]
+     | token*:t -> t.filter!(a => a != Token.Whitespace)
+
+token : (Input) -> Token
+      | "data" -> Token.Data(input.locus)
+      | "module" -> Token.Module(input.locus)
+      | "import" -> Token.Imports(input.locus)
+      | '(' -> Token.LeftParen(input.locus)
+      | ')' -> Token.RightParen(input.locus)
+      | '=' -> Token.Assign(input.locus)
+      | "->" -> Token.Arrow(input.locus)
+      | ',' -> Token.Comma(input.locus)
+      | '[' -> Token.LeftSquare(input.locus)
+      | ']' -> Token.RightSquare(input.locus)
+      | "//" .* newline:n -> n
+      | (' ' | '\t')* -> Token.Whitespace(input.locus)
+      | identifier -> Token.identifier(input.locus)
+      | character_literal:c -> Token.Char(input.locus, c)
+      | string_literal:s -> Token.String(input.locus, s)
+      | raw_literal:r -> Token.Raw(input.locus, r)
+      | '.' -> Token.Dot(input.locus)
+      | '|' -> Token.Or(input.locus)
+      | '*' -> Token.Star(input.locus)
+      | '?' -> Token.Query(input.locus)
+      | '+' -> Token.Plus(input.locus)
+      | '\n' -> Token.NewLine(input.locus)
+      | '!' -> Token.Not(input.locus)
+      | . -> Token.Raw(input.locus, result)
+
+identifier : (Input) -> Token
+           | identifier_non_digit identifier_rest*
+           -> Token.Identifier(input.locus, result)
+
+character_literal : (Input) -> char
+                  | "'" c_char*:c "'"
+                  -> check_character_literal(c, input.locus)
+
+c_char : (Input) -> char
+       | '\\' . -> unescape_char(result)
+       | !("'" | '"' | '\n') -> result
+
+unescape_char = (Input) -> char
+              | 'n' -> '\n'
+              | '\\' -> '\\'
+              | 't' -> '\t'
+              | .
+
+string_literal : (Input) -> string
+               | '"' c_char*:s '"' -> s
+
+raw_literal : (Input) -> string
+            | '{' .*:r '}' -> r
+
+newline : (Input) -> Token
+        | '\n' -> Token.NewLine(input.locus)

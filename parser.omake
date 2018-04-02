@@ -1,0 +1,70 @@
+// Omake meta programming language compiler.
+// Copyright (C) 2018  Ilmir Usmanov
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+
+module omake.parser
+
+import {
+  omake.lexer
+}
+
+data File(module_str = string,
+          imports_strs = string[],
+          adts = Adt[],
+          rules = Rule[])
+
+data Adt(name = Token.Identifier,
+         entries = AdtEntry[])
+
+data AdtEntry(name = Token.Identifier,
+              type = StructType)
+
+data StructType = Empty
+                | Composite(name = Token[], type = Type)
+
+data Type = Adt(string[])
+          | Array(string)
+          | Simple(string)
+
+data Rule(name = string, type = RuleType, patterns = Patterns[])
+
+data RuleType(result = Type, parameters = Type[])
+
+data Patterns(Pattern, action = string)
+
+data Pattern(Match, variable = string)
+
+data Match = OneOrMore(Subpattern)
+           | ZeroOrMore(Subpattern)
+           | ExactlyOne(Subpattern)
+           | ZeroOrOne(Subpattern)
+           | Not(Subpattern)
+
+data Subpattern = Pattern(string)
+                | Matches(Match[])
+
+rule : (Input) -> Rule
+     | identifier:n ':' rule_type:t pattern+:p -> Rule(n, t, p)
+
+rule_type : (Input) -> RuleType
+          | '(' rule_param_types:p ')' "->" type:r -> RuleType(r, t)
+
+rule_param_types : (Input) -> Type[]
+                 | type:a (',' type)*:b -> [a] ~ b
+
+type : (Input) -> Type
+     | identifier:n -> 
+
