@@ -1,4 +1,4 @@
-// Omake meta programming language compiler: dlang runtime support library.
+// Omake meta programming language compiler.
 // Copyright (C) 2018  Ilmir Usmanov
 //
 // This program is free software: you can redistribute it and/or modify
@@ -10,28 +10,19 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-module omake.input;
+module omake.error
 
-struct Locus {
-  long row;
-  long column;
-  this() { row = 1; column = 1; }
-  void addChar() { column++; }
-  void newLine() { row++; column = 1; }
+import (
+  std.exception
+  std.string
+  omake.lexer
 )
 
-data Input {
-  string value;
-  Locus locus;
-  bool empty() { return value.empty(); }
-  void popFront() {
-    if (empty()) return;
-    if (front() == "\n") locus.newLine();
-    else locus.addChar();
-  }
-  dchar front() {
-    if (empty()) return '\0';
-    return value.front();
-  }
-}
+exception OmakeException
+
+error : (string, locus = Locus)
+      -> throw OmakeException("%s at %s:%s".format(description, locus.raw, locus.column))

@@ -10,92 +10,87 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 module omake.lexer
 
-import {
+import (
   omake.error
-  omake.input
-}
+)
 
-data Input : InputRange
+data Locus(raw : long { 1 }, column : long { 1 })
+> advance : (this, c : char) -> void
+> { if (c != '\n') column++; else { row++; column = 1; } }
 
-data Token(locus = Locus)
-          = Whitespace
-          | LeftParen
-          | RightParen
-          | Assign
-          | Arrow
-          | Comma
-          | Data
-          | Module
-          | Imports
-          | LeftSquare
-          | RightSquare
-          | Identifier(string)
-          | Char(char)
-          | String(string)
-          | Dot
-          | Or
-          | Star
-          | Query
-          | Plus
-          | Raw(string)
-          | NewLine
-          | Not
+data Input(string, locus : Locus { Locus() })
+> empty : (this) -> bool :: front : (this) -> dchar            :: popFront : (this) -> void
+> { value.empty() }      :: { empty() ? '\0' : value.front() } :: { if (empty()) return; locus.advance(front()); value.popFront(); }
 
-scan : (Input) -> Token[]
-     | token*:t -> t.filter!(a => a != Token.Whitespace)
+data Token(locus : Locus)
+> match : (Input)   -> Token                                    :: toString : (this) -> string
+> "::"              | ColonColon(){ input.locus }               :: { "::" }
+> ":"               | Colon(){ input.locus }                    :: { ":" }
+> (' ' | '\t')*     | Whitespace(){ input.locus }               :: { " " }
+> '('               | LeftParen(){ input.locus }                :: { "(" }
+> ')'               | RightParen(){ input.locus }               :: { ")" }
+> '='               | Assign(){ input.locus }                   :: { "=" }
+> "->"              | Arrow(){ input.locus }                    :: { "->" }
+> ','               | Comma(){ input.locus }                    :: { "," }
+> "data"            | Data(){ input.locus }                     :: { "data" }
+> "module"          | Module(){ input.locus }                   :: { "module" }
+> "import"          | Import(){ input.locus }                   :: { "import" }
+> '['               | LeftSquare(){ input.locus }               :: { "[" }
+> ']'               | RightSquare(){ input.locus }              :: { "]" }
+> identifier        | Identifier(string){ input.locus, result } :: { value }
+> character_literal | Char(char){ input.locus, result }         :: { "'" ~ value ~ "'" }
+> string_literal    | String(string){ input.locus, result }     :: { `"` ~ value ~ `"` }
+> ".."              | DotDot(){ input.locus }                   :: { ".." }
+> '.'               | Dot(){ input.locus }                      :: { "." }
+> '|'               | Or(){ input.locus }                       :: { "|" }
+> '*'               | Star(){ input.locus }                     :: { "*" }
+> '?'               | Query(){ input.locus }                    :: { "?" }
+> '+'               | Plus(){ input.locus }                     :: { "+" }
+> raw_literal       | Raw(string){ input.locus }                :: { "{" ~ value ~ "}" }
+> '\n'              | NewLine(){ input.locus }                  :: { "\n" }
+> '!'               | Not(){ input.locus }                      :: { "!" }
+> '$'               | Dollar(){ input.locus }                   :: { "$" }
+> '>'               | Enter(){ input.locus }                    :: { ">" }
 
-token : (Input) -> Token
-      | "data" -> Token.Data(input.locus)
-      | "module" -> Token.Module(input.locus)
-      | "import" -> Token.Imports(input.locus)
-      | '(' -> Token.LeftParen(input.locus)
-      | ')' -> Token.RightParen(input.locus)
-      | '=' -> Token.Assign(input.locus)
-      | "->" -> Token.Arrow(input.locus)
-      | ',' -> Token.Comma(input.locus)
-      | '[' -> Token.LeftSquare(input.locus)
-      | ']' -> Token.RightSquare(input.locus)
-      | "//" .* newline:n -> n
-      | (' ' | '\t')* -> Token.Whitespace(input.locus)
-      | identifier -> Token.identifier(input.locus)
-      | character_literal:c -> Token.Char(input.locus, c)
-      | string_literal:s -> Token.String(input.locus, s)
-      | raw_literal:r -> Token.Raw(input.locus, r)
-      | '.' -> Token.Dot(input.locus)
-      | '|' -> Token.Or(input.locus)
-      | '*' -> Token.Star(input.locus)
-      | '?' -> Token.Query(input.locus)
-      | '+' -> Token.Plus(input.locus)
-      | '\n' -> Token.NewLine(input.locus)
-      | '!' -> Token.Not(input.locus)
-      | . -> Token.Raw(input.locus, result)
+scan : (Input) -> Token[] | Token.match*:t -> filter_out_whitespaces(t)
 
-identifier : (Input) -> Token
-           | identifier_non_digit identifier_rest*
-           -> Token.Identifier(input.locus, result)
+filter_out_whitespaces : (Token[])                                  -> Token[]
+                       | $                                          -> []
+                       | Token.Whitespace* filter_out_whitespaces:t -> t
+                       | . filter_out_whitespaces:t                 -> t
 
-character_literal : (Input) -> char
-                  | "'" c_char*:c "'"
-                  -> check_character_literal(c, input.locus)
+identifier : (Input)                               -> Token
+           | identifier_non_digit identifier_rest* -> Token.Identifier(input.locus, result)
 
-c_char : (Input) -> char
-       | '\\' . -> unescape_char(result)
-       | !("'" | '"' | '\n') -> result
+identifier_non_digit : (Input) -> char | 'a' .. 'z' | 'A' .. 'Z' | '_'
+
+identifier_rest : (Input) -> char | identifier_non_digit | '0' .. '9'
+
+character_literal : (Input)           -> char
+                  | "'" c_char*:c "'" -> check_character_literal(c, input.locus)
+
+check_character_literal : (string, locus : Locus) -> char
+                        | .:c $                   -> result
+                        | .                       -> error("wrong character literal: '" ~ input ~ "'", locus);
+
+c_char : (Input)  -> char
+       | '\\' .   -> unescape_char(result)
+       | .        -> result
 
 unescape_char = (Input) -> char
-              | 'n' -> '\n'
-              | '\\' -> '\\'
-              | 't' -> '\t'
-              | .
+              | 'n'     -> '\n'
+              | '\\'    -> '\\'
+              | 't'     -> '\t'
+              | .       -> result
 
-string_literal : (Input) -> string
-               | '"' c_char*:s '"' -> s
+string_literal : (Input) -> string | '"' c_char*:s '"' -> s
 
-raw_literal : (Input) -> string
-            | '{' .*:r '}' -> r
+raw_literal : (Input) -> string | '{' r_char*:r '}' -> r
 
-newline : (Input) -> Token
-        | '\n' -> Token.NewLine(input.locus)
+r_char = (Input) -> string | '{' r_char* '}' | character_literal | string_literal | .
