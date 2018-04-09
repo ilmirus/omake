@@ -15,56 +15,40 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 
-module omake.parser
+module `omake.parser`
 
 import {
-  omake.lexer
+  `omake.lexer`
 }
 
-data File(module_str = string,
-          imports_strs = string[],
-          adts = Adt[],
-          rules = Rule[])
+data File(module_str: Token.Raw?,
+          imports: Token.Raw[],
+          declarations: Declaration[])
 
-data Adt(name = Token.Identifier,
-         entries = AdtEntry[])
+file : (Input) -> File
+     | module_str?:m imports*:i declaration*:d -> `File(m, i, d)`
 
-data AdtEntry(name = Token.Identifier,
-              type = StructType)
+module_str : (Input) -> Token.Raw
+           | Token.NewLine* Token.Module Token.Raw:r -> `r`
 
-data StructType = Empty
-                | Composite(name = Token[], type = Type)
+imports : (Input) -> Token.Raw[]
+        | Token.NewLine* Token.Import Token.LeftBrace import_raw_str*:i Token.RightBrace -> `i`
 
-data Type = Adt(string[])
-          | Array(string)
-          | Simple(string)
+import_raw_str : (Input) -> Token.Raw
+               | Token.NewLine* Token.Raw:r -> `r`
 
-data Rule(name = string, type = RuleType, patterns = Patterns[])
+data Declaration | Data(Data) | Rule(Rule)
 
-data RuleType(result = Type, parameters = Type[])
+declaration : (Input) -> Declaration
+            | match_data -> `Declaration.Data(result)`
+            | rule       -> `Declaration.Rule(result)`
 
-data Patterns(Pattern, action = string)
+data Data(name: Token.Identifier,
+          fields: DataField[],
+          methods: DataMethod[],
+          values: DataValue[])
 
-data Pattern(Match, variable = string)
+match_data : (Input) -> Data
+           | Token.NewLine* Token.Data Token.Identifier:i fields?:f methods?:m values?:v -> `Data(i, f, m, v)`
 
-data Match = OneOrMore(Subpattern)
-           | ZeroOrMore(Subpattern)
-           | ExactlyOne(Subpattern)
-           | ZeroOrOne(Subpattern)
-           | Not(Subpattern)
-
-data Subpattern = Pattern(string)
-                | Matches(Match[])
-
-rule : (Input) -> Rule
-     | identifier:n ':' rule_type:t pattern+:p -> Rule(n, t, p)
-
-rule_type : (Input) -> RuleType
-          | '(' rule_param_types:p ')' "->" type:r -> RuleType(r, t)
-
-rule_param_types : (Input) -> Type[]
-                 | type:a (',' type)*:b -> [a] ~ b
-
-type : (Input) -> Type
-     | identifier:n -> 
 
