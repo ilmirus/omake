@@ -14,84 +14,83 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-module `omake.lexer`
+module omake.lexer
 
 import {
-  `omake.error`
+  omake.error
 }
 
 data Locus(row: long, column: long) {
-  this : () -> Locus = `row = 1; column = 1;`
-  advance : (this, c: char) -> void = `if (c == '\n') { row = 1; column++; } else row++;`
+  rule this : () -> Locus = `row = 1; column = 1;`
+  rule advance : (this, c: char) -> void = `if (c == '\n') { row = 1; column++; } else row++;`
 }
 
 data Input(string, locus: Locus) {
-  empty : (this) -> bool = `value.empty()`
-  front : (this) -> dchar = `empty() ? '\0' : value.front()`
-  popFront : (this) -> void = `if (empty()) return; locus.advance(front()); value.popFront();`
+  rule empty : (this) -> bool = `value.empty()`
+  rule front : (this) -> dchar = `empty() ? '\0' : value.front()`
+  rule popFront : (this) -> void = `if (empty()) return; locus.advance(front()); value.popFront();`
 }
 
-data Token(locus: Locus) { match : (Input)   -> Token                ; toString : (this) -> string }
-| ColonColon             { "::"              -> `input.locus`        ; `"::"`                      }
-| Colon                  { ":"               -> `input.locus`        ; `":"`                       }
-| Equals                 { "="               -> `input.locus`        ; `"="`                       }
-| Whitespace             { (' ' | '\t')*     -> `input.locus`        ; `" "`                       }
-| LeftParen              { '('               -> `input.locus`        ; `"("`                       }
-| RightParen             { ')'               -> `input.locus`        ; `")"`                       }
-| LeftBrace              { '{'               -> `input.locus`        ; `"{"`                       }
-| RightBrace             { '}'               -> `input.locus`        ; `"}"`                       }
-| Arrow                  { "->"              -> `input.locus`        ; `"->"`                      }
-| Comma                  { ','               -> `input.locus`        ; `","`                       }
-| Data                   { "data"            -> `input.locus`        ; `"data"`                    }
-| Module                 { "module"          -> `input.locus`        ; `"module"`                  }
-| Import                 { "import"          -> `input.locus`        ; `"import"`                  }
-| LeftSquare             { '['               -> `input.locus`        ; `"["`                       }
-| RightSquare            { ']'               -> `input.locus`        ; `"]"`                       }
-| Identifier(string)     { identifier        -> `input.locus, result`; `value`                     }
-| Char(char)             { character_literal -> `input.locus, result`; `"'" ~ value ~ "'"`         }
-| String(string)         { string_literal    -> `input.locus, result`; ``"` ~ value ~ `"``         }
-| DotDot                 { ".."              -> `input.locus`        ; `".."`                      }
-| Dot                    { '.'               -> `input.locus`        ; `"."`                       }
-| Or                     { '|'               -> `input.locus`        ; `"|"`                       }
-| Star                   { '*'               -> `input.locus`        ; `"*"`                       }
-| Query                  { '?'               -> `input.locus`        ; `"?"`                       }
-| Plus                   { '+'               -> `input.locus`        ; `"+"`                       }
-| Raw                    { raw_literal       -> `input.locus, result`; `"{" ~ value ~ "}"`         }
-| NewLine                { '\n'              -> `input.locus`        ; `"\n"`                      }
-| Not                    { '!'               -> `input.locus`        ; `"!"`                       }
-| Dollar                 { '$'               -> `input.locus`        ; `"$"`                       }
-| Semicolon              { ';'               -> `input.locus`        ; `";"`                       }
+data Token(locus: Locus) { match : (Input)      -> Token                ; toString : (this) -> string }
+= ColonColon             { "::"                 -> `input.locus`        ; `"::"`                      }
+| Colon                  { ":"                  -> `input.locus`        ; `":"`                       }
+| Equals                 { "="                  -> `input.locus`        ; `"="`                       }
+| Whitespace             { (' ' | '\t' | '\n')* -> `input.locus`        ; `" "`                       }
+| LeftParen              { '('                  -> `input.locus`        ; `"("`                       }
+| RightParen             { ')'                  -> `input.locus`        ; `")"`                       }
+| LeftBrace              { '{'                  -> `input.locus`        ; `"{"`                       }
+| RightBrace             { '}'                  -> `input.locus`        ; `"}"`                       }
+| Arrow                  { "->"                 -> `input.locus`        ; `"->"`                      }
+| Comma                  { ','                  -> `input.locus`        ; `","`                       }
+| Data                   { "data"               -> `input.locus`        ; `"data"`                    }
+| Module                 { "module"             -> `input.locus`        ; `"module"`                  }
+| Import                 { "import"             -> `input.locus`        ; `"import"`                  }
+| LeftSquare             { '['                  -> `input.locus`        ; `"["`                       }
+| RightSquare            { ']'                  -> `input.locus`        ; `"]"`                       }
+| Identifier(string)     { identifier           -> `input.locus, result`; `value`                     }
+| Char(char)             { character_literal    -> `input.locus, result`; `"'" ~ value ~ "'"`         }
+| String(string)         { string_literal       -> `input.locus, result`; `"\"" ~ value ~ "\""`       }
+| DotDot                 { ".."                 -> `input.locus`        ; `".."`                      }
+| Dot                    { '.'                  -> `input.locus`        ; `"."`                       }
+| Or                     { '|'                  -> `input.locus`        ; `"|"`                       }
+| Star                   { '*'                  -> `input.locus`        ; `"*"`                       }
+| Query                  { '?'                  -> `input.locus`        ; `"?"`                       }
+| Plus                   { '+'                  -> `input.locus`        ; `"+"`                       }
+| Raw(string)            { raw_literal          -> `input.locus, result`; `"{" ~ value ~ "}"`         }
+| Not                    { '!'                  -> `input.locus`        ; `"!"`                       }
+| Dollar                 { '$'                  -> `input.locus`        ; `"$"`                       }
+| Semicolon              { ';'                  -> `input.locus`        ; `";"`                       }
 
-scan : (Input) -> Token[] | Token.match*:t -> filter_out_whitespaces(t)
+rule scan : (Input) -> Token[] | Token.match*:t = filter_out_whitespaces(t)
 
-filter_out_whitespaces : (Token[])                                  -> Token[]
-                       | $                                          -> `[]`
-                       | Token.Whitespace* filter_out_whitespaces:t -> `t`
-                       | . filter_out_whitespaces:t                 -> `t`
+rule filter_out_whitespaces : (Token[])                                  -> Token[]
+                            = $                                          -> `[]`
+                            | Token.Whitespace* filter_out_whitespaces:t -> `t`
+                            | . filter_out_whitespaces:t                 -> `t`
 
-identifier : (Input) -> string | identifier_non_digit identifier_rest*
+rule identifier : (Input) -> string = identifier_non_digit identifier_rest*
 
-identifier_non_digit : (Input) -> char | 'a' .. 'z' | 'A' .. 'Z' | '_'
+rule identifier_non_digit : (Input) -> char = 'a' .. 'z' | 'A' .. 'Z' | '_'
 
-identifier_rest : (Input) -> char | identifier_non_digit | '0' .. '9'
+rule identifier_rest : (Input) -> char = identifier_non_digit | '0' .. '9'
 
-character_literal : (Input)           -> char
-                  | "'" c_char*:c "'" -> `check_character_literal(c, input.locus)`
+rule character_literal : (Input)           -> char
+                       = "'" c_char*:c "'" -> `check_character_literal(c, input.locus)`
 
-check_character_literal : (string, locus : Locus) -> char
-                        | .:c $                   -> `result`
-                        | .                       -> `error("wrong character literal: '" ~ input ~ "'", locus);`
+rule check_character_literal : (string, locus : Locus) -> char
+                             = . $                     -> `result`
+                             | .                       -> `error("wrong character literal: '" ~ input ~ "'", locus);`
 
-c_char : (Input)  -> char
-       | '\\' .   -> `unescape_char(result)`
-       | .        -> `result`
+rule c_char : (Input)  -> char
+            = '\\' .   -> `unescape_char(result)`
+            | .        -> `result`
 
-unescape_char : (Input) -> char
-              | 'n'     -> `'\n'`
-              | '\\'    -> `'\\'`
-              | 't'     -> `'\t'`
-              | .       -> `result`
+rule unescape_char : (Input) -> char
+                   = 'n'     -> `'\n'`
+                   | '\\'    -> `'\\'`
+                   | 't'     -> `'\t'`
+                   | .       -> `result`
 
-string_literal : (Input) -> string | '"' c_char*:s '"' -> `s`
+rule string_literal : (Input) -> string = '"' c_char*:s '"' -> `s`
 
-raw_literal : (Input) -> string | '`' .*:r '`' -> `r`
+rule raw_literal : (Input) -> string = '`' .*:r '`' -> `r`

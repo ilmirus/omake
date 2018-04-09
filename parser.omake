@@ -14,39 +14,39 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-
-module `omake.parser`
+module omake.parser
 
 import {
-  `omake.lexer`
+  omake.lexer
 }
 
-data File(module_str: Token.Raw?,
-          imports: Token.Raw[],
-          declarations: Declaration[])
+data File(module_str: Name?, imports: Name[], declarations: Declaration[]) {
+  rule match : (Token[]) -> File = match_module?:m imports*:i Declaration.match*:d -> `m, i, d`
+}
 
-file : (Input) -> File
-     | module_str?:m imports*:i declaration*:d -> `File(m, i, d)`
+rule match_module : (Token[]) -> Name = Token.Module Name.match:n -> `n`
 
-module_str : (Input) -> Token.Raw
-           | Token.NewLine* Token.Module Token.Raw:r -> `r`
+data Name(Token.Identifier[]) {
+  rule match : (Token[]) -> Name = Token.Identifier:i name_suffix*:s -> `[i] ~ s`
+}
 
-imports : (Input) -> Token.Raw[]
-        | Token.NewLine* Token.Import Token.LeftBrace import_raw_str*:i Token.RightBrace -> `i`
+rule name_suffix : (Token[]) -> Name = Token.Dot Token.Identifier:i -> `i`
 
-import_raw_str : (Input) -> Token.Raw
-               | Token.NewLine* Token.Raw:r -> `r`
+rule imports : (Token[]) -> Name[] = Token.Import Token.LeftBrace Name.match*:n Token.RightBrace -> `n`
 
-data Declaration | Data(Data) | Rule(Rule)
+data Declaration { match : (Token[]) -> Declaration }
+= Data(Data)     { Data.match -> `result` }
+| Rule(Rule)     { Rule.match -> `result` }
 
-declaration : (Input) -> Declaration
-            | match_data -> `Declaration.Data(result)`
-            | rule       -> `Declaration.Rule(result)`
+data Data(name: Token.Identifier, fields: DataField[], methods: DataMethod[], values: DataValue[]) {
+  rule match : (Token[]) -> Data
+             = Token.Data Token.Identifier:i
+               Token.LeftParen match_data_fields:f Token.RightParen
+               Token.RightBrace match_data_methods:m Token.RightBrace
+               (Token.Equals match_data_values:v)? -> `i, f, m, v`
+}
 
-data Data(name: Token.Identifier,
-          fields: DataField[],
-          methods: DataMethod[],
-          values: DataValue[])
+rule match_data_fields : 
 
 match_data : (Input) -> Data
            | Token.NewLine* Token.Data Token.Identifier:i fields?:f methods?:m values?:v -> `Data(i, f, m, v)`
