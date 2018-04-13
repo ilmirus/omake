@@ -16,13 +16,12 @@
 
 module omake.error
 
-import (
+import {
   std.exception
   std.string
   omake.lexer
-)
+}
 
 exception OmakeException
 
-error : (string, locus = Locus)
-      -> throw OmakeException("%s at %s:%s".format(description, locus.raw, locus.column))
+rule error : (string, locus = Locus) = `throw OmakeException("%s at %s:%s".format(description, locus.raw, locus.column))`

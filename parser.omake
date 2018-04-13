@@ -20,35 +20,69 @@ import {
   omake.lexer
 }
 
-data File(module_str: Name?, imports: Name[], declarations: Declaration[]) {
-  rule match : (Token[]) -> File = match_module?:m imports*:i Declaration.match*:d -> `m, i, d`
+data Module(module_str: Name?, imports: Name[], declarations: Declaration[]) {
+  rule match : (Token[]) = (Token.Module:_ Name)?:m
+                           (Token.Import:_ Token.LeftBrace:_ Name Token.RightBrace:_)*:i
+                           Declaration*:d -> `m, i, d`
 }
-
-rule match_module : (Token[]) -> Name = Token.Module Name.match:n -> `n`
 
 data Name(Token.Identifier[]) {
-  rule match : (Token[]) -> Name = Token.Identifier:i name_suffix*:s -> `[i] ~ s`
+  rule match : (Token[]) = Token.Identifier (Token.Dot:_ Token:Identifier)*
 }
 
-rule name_suffix : (Token[]) -> Name = Token.Dot Token.Identifier:i -> `i`
+data Declaration { rule match : (Token[]) }
+= Data(Data)     { = Token.Data:_ Data }
+| Rule(Rule)     { = Token.Rule:_ Rule }
 
-rule imports : (Token[]) -> Name[] = Token.Import Token.LeftBrace Name.match*:n Token.RightBrace -> `n`
-
-data Declaration { match : (Token[]) -> Declaration }
-= Data(Data)     { Data.match -> `result` }
-| Rule(Rule)     { Rule.match -> `result` }
-
-data Data(name: Token.Identifier, fields: DataField[], methods: DataMethod[], values: DataValue[]) {
-  rule match : (Token[]) -> Data
-             = Token.Data Token.Identifier:i
-               Token.LeftParen match_data_fields:f Token.RightParen
-               Token.RightBrace match_data_methods:m Token.RightBrace
-               (Token.Equals match_data_values:v)? -> `i, f, m, v`
+data Data(header: DataHeader, methods: Rule[], values: DataValue[]) {
+  rule match : (Token[]) = Token.Data DataHeader:h
+                           (Token.RightBrace:_ (Token.Rule:_ Rule)* Token.RightBrace:_)?:m
+                           (Token.Equals:_ DataValue (Token.Or:_ DataValue)*)?:v -> `h, m, v`
 }
 
-rule match_data_fields : 
+data DataHeader(name: Token.Identifier, fields: DataField[]) {
+  rule match : (Token[]) = Token.Data Token.Identifier:i
+                           (Token.LeftParen:_ DataField (Token.Comma:_ DataField)? Token.RightParen:_)?:f -> `i, f`
+}
 
-match_data : (Input) -> Data
-           | Token.NewLine* Token.Data Token.Identifier:i fields?:f methods?:m values?:v -> `Data(i, f, m, v)`
+data DataField(name: Name?, type: Type) {
+  rule match : (Token[]) = Name?:n Token.Colon Type:t -> `n, t`
+}
 
+data Type(Name) { rule match : (Token[])                      }
+= Optional      { Name Token.Query:_                          }
+| Array         { Name Token.LeftSquare:_ Token:RightSquare:_ }
+| Normal        { Name                                        }
 
+data DataValue(header: DataHeader, methods: RuleBody[]) {
+  rule match : (Token[]) = DataHeader:h (Token.LeftBrace:_ (Token.Equals:_ RuleBody)* Token.RightBrace:_)?:r -> `h, r`
+}
+
+data Rule(name: Name, input_types: Type[], result_type: Type?, body: RuleBody) {
+  rule match : (Token[]) = Name:n Token.Colon:_
+                           (Token.LeftParen:_ (Type (Token.Comma:_ Type)*)? Token.RightParen:_):it
+                           RuleBody:rb -> `n, it, rb`
+}
+
+data RuleBody(RulePart[]) {
+  rule match : (Token[]) = RulePart (Token.Or:_ RulePart)*
+}
+
+data RulePart(Atom[], action: Token.Raw?) {
+  rule match : (Token[]) = Token.Raw                           -> `null, result`
+                         | Atom+:p (Token.Arrow:_ Token.Raw):r -> `p, r`
+}
+
+data Atom(PostfixAtom, name: Name?) {
+  rule match : (Token[]) = PostfixAtom:p (Token.Colon:_ Name):n -> `p, n`
+}
+
+data PostfixAtom(SimpleAtom) { match : (Token[])        }
+= ZeroOrOne                  { SimpleAtom Token.Query:_ }
+| ZeroOrMore                 { SimpleAtom Token.Star:_  }
+| OneOrMore                  { SimpleAtom Token.Plus:_  }
+| Simple                     { SimpleAtom               }
+
+data SimpleAtom   { match : (Token[])                          }
+= Compound(Atom)  { Token.LeftParen:_ Atom+ Token.RightParen:_ }
+| Name(Name)      { Name                                       }
