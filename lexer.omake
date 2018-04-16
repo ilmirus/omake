@@ -47,9 +47,8 @@ data Token(locus: Locus) { rule match : (Input)                            rule 
 | Import                 { = "import"             -> `input.locus`         = `"import"`                     }
 | LeftSquare             { = '['                  -> `input.locus`         = `"["`                          }
 | RightSquare            { = ']'                  -> `input.locus`         = `"]"`                          }
+| Literal(literal)       { = Literal              -> `input.locus, result` = `value.toString()`             }
 | Identifier(string)     { = identifier           -> `input.locus, result` = `value`                        }
-| Char(char)             { = character_literal    -> `input.locus, result` = `"'" ~ value ~ "'"`            }
-| String(string)         { = string_literal       -> `input.locus, result` = `"\"" ~ value ~ "\""`          }
 | DotDot                 { = ".."                 -> `input.locus`         = `".."`                         }
 | Dot                    { = '.'                  -> `input.locus`         = `"."`                          }
 | Or                     { = '|'                  -> `input.locus`         = `"|"`                          }
@@ -60,13 +59,18 @@ data Token(locus: Locus) { rule match : (Input)                            rule 
 | Dollar                 { = '$'                  -> `input.locus`         = `"$"`                          }
 | Error(char)            { = .                    -> `input.locus, result` = `value`                        }
 
+data Literal      { rule match : (Input)                                               rule toString : (this) -> string }
+| Char(char)      { = ["'" c_char*:c "'"] -> `check_character_literal(c, input.locus)` = `"'" ~ value ~ "'"`            }
+| String(string)  { = ['"' c_char*:s '"']                                              = `"\"" ~ value ~ "\""`          }
+| Null            { = ["null"           ]                                              = "null"                         }
+
 rule scan : (Input) -> Token[] = Token*:t -> `filter_out_whitespaces(t)`
 
 rule filter_out_whitespaces : (Token[]) -> Token[] = (Token.Whitespace:_ .*)* -> `check_for_errors(result)`
 
-rule check_for_errors : (Token[])        -> Token[]
-                      = .* Token.Error:e -> `error("Unexpected character: '" ~ e.value ~ "', e.locus)`
-                      | .*               -> `result`
+rule check_for_errors : (Token[])           -> Token[]
+                      = [.* Token.Error:e]  -> `error("Unexpected character: '" ~ e.value ~ "', e.locus)`
+                      | [.*              ]
 
 rule identifier : (Input) -> string = identifier_non_digit identifier_rest*
 
@@ -74,16 +78,13 @@ rule identifier_non_digit : (Input) -> char = 'a' .. 'z' | 'A' .. 'Z' | '_'
 
 rule identifier_rest : (Input) -> char = identifier_non_digit | '0' .. '9'
 
-rule character_literal : (Input)           -> char
-                       = "'" c_char*:c "'" -> `check_character_literal(c, input.locus)`
-
 rule check_character_literal : (string, locus : Locus) -> char
-                             = . $                     -> `result`
-                             | .                       -> `error("wrong character literal: '" ~ input ~ "'", locus)`
+                             = [. $]                   -> `result`
+                             | [.  ]                   -> `error("wrong character literal: '" ~ input ~ "'", locus)`
 
 rule c_char : (Input)  -> char
-            = '\\' .   -> `unescape_char(result)`
-            | .        -> `result`
+            = ['\\' .] -> `unescape_char(result)`
+            | [.     ] -> `result`
 
 rule unescape_char : (Input) -> char
                    = 'n'     -> `'\n'`
@@ -91,6 +92,4 @@ rule unescape_char : (Input) -> char
                    | 't'     -> `'\t'`
                    | .       -> `result`
 
-rule string_literal : (Input) -> string = '"' c_char*:s '"' -> `s`
-
-rule raw_literal : (Input) -> string = '`' .*:r '`' -> `r`
+rule raw_literal : (Input) -> string = ['`' .*:r '`' -> `r`]
