@@ -23,80 +23,86 @@ import {
 data Module(module_str: Name?, imports: Name[], declarations: Declaration[]) {
   rule match : (Token[]) = [[Token.Module:_ Name:m]?
                             [Token.Import:_ Token.LeftBrace:_ Name*:i Token.RightBrace:_]?
-                            Declaration*:d] -> `m, i, d`
-  rule meta : (this) -> void = this(., ., [Declaration.meta*])
+                            Declaration*:d] -> `Module(m, i, d)`
+  rule meta : (this) -> void = Module(., [.*], [Declaration.meta*])
 }
 
 data Name(Token.Identifier[]) {
   rule match : (Token[]) = [Token.Identifier [Token.Dot:_ Token:Identifier]*]
 }
 
-data Declaration { rule match : (Token[]) rule meta : (this) -> void }
-= Data(Data)     { = [Token.Data:_ Data]  = this.Data(Data.meta) }
-| Rule(Rule)     { = [Token.Rule:_ Rule]  = this.Rule(Rule.meta) }
+data Declaration = Data(Data) | Rule(Rule) {
+  rule match : (Token[]) = [Token.Data:_ Data] -> `Data(result)`
+                         | [Token.Rule:_ Rule] -> `Rule(result)`
+}
 
-data Data(header: DataHeader, methods: Rule[], values: DataValue[]) {
+data Data(header: DataHeader, values: DataHeader[], methods: Rule[]) {
   rule match : (Token[]) = [Token.Data DataHeader:h
-                            [Token.RightBrace:_ [Token.Rule:_ Rule]* Token.RightBrace:_]?:m
-                            [Token.Equals:_ DataValue [Token.Or:_ DataValue]*]?:v] -> `h, m, v`
-  rule meta : (this) -> void = `fill_match_return_type(); fill_match_rule_results();`
-  rule fill_match_return_type : (this) -> void = this(DataHeader(:name, DataField.meta:_), find_match:m, .)
-                                               -> `m.result_type = Type.Normal(name)`
-  rule fill_match_rule_results : (this) -> void = TODO
+                            [Token.Equals:_ DataHeader [Token.Or:_ DataHeader]*]?:v
+                            [Token.RightBrace:_ [Token.Rule:_ Rule]* Token.RightBrace:_]?:m] -> `Data(h, v, m)`
+  rule meta : (this) -> void = Data(DataHeader(:name, DataField.meta:_), [.*],
+                                    [[.*:_ Rule(Name([Token.Identifier("match")]), [.*], ., .)]:m])
+                             -> `m.result_type = Type.Normal(name)`
 }
 
 data DataHeader(name: Token.Identifier, fields: DataField[]) {
   rule match : (Token[]) = [Token.Data Token.Identifier:i
-                            [Token.LeftParen:_ DataField [Token.Comma:_ DataField]* Token.RightParen:_]?:f] -> `i, f`
-  rule meta : (this) -> void = this(., [DataField.meta*])
+                            [Token.LeftParen:_ DataField [Token.Comma:_ DataField]* Token.RightParen:_]?:f] -> `DataHeader(i, f)`
+  rule meta : (this) -> void = DataHeader(., [DataField.meta*])
 }
 
 data DataField(name: Name?, type: Type) {
-  rule match : (Token[]) = [Name?:n Token.Colon Type:t] -> `n, t`
-  rule meta : (this) -> () = this(null, _) -> `name = Name.Normal("value")`
+  rule match : (Token[]) = [Name?:n Token.Colon Type:t] -> `DataField(n, t)`
+  rule meta : (this) -> () = this(null, .) -> `name = Name.Normal("value")`
 }
 
-data Type(Name) { rule match : (Token[])                          }
-= Optional      { = [Name Token.Query:_                         ] }
-| Array         { = [Name Token.LeftSquare:_ Token:RightSquare:_] }
-| Normal        { = [Name                                       ] }
+data Type(Name) = Optional | Array | Normal {
+  rule match : (Token[]) = [Name Token.Query:_]                          -> `Optional(result)`
+                         | [Name Token.LeftSquare:_ Token:RightSquare:_] -> `Array(result)`
+                         | [Name]                                        -> `Normal(name)`
+}
 
 data DataValue(header: DataHeader, methods: RuleBody[]) {
-  rule match : (Token[]) = [DataHeader:h [Token.LeftBrace:_ [Token.Equals:_ RuleBody]* Token.RightBrace:_]?:r] -> `h, r`
+  rule match : (Token[]) = [DataHeader:h [Token.LeftBrace:_ [Token.Equals:_ RuleBody]* Token.RightBrace:_]?:r] -> `DataValue(h, r)`
 }
 
 data Rule(name: Name, input_types: Type[], result_type: Type?, body: RuleBody) {
   rule match : (Token[]) = [Name:n Token.Colon:_
                             [Token.LeftParen:_ [Type [Token.Comma:_ Type]*]? Token.RightParen:_]:it
                             [Token.Arrow:_ Type]:rt
-                            RuleBody:rb] -> `n, it, rt, rb`
+                            RuleBody:rb] -> `Rule(n, it, rt, rb)`
 }
 
 data RuleBody(RulePart[]) {
-  rule match : (Token[]) = [RulePart [Token.Or:_ RulePart]*]
+  rule match : (Token[]) = [RulePart [Token.Or:_ RulePart]*] -> `RuleBody(result)`
 }
 
 data RulePart(NamedExpr, action: Token.Raw?) {
-  rule match : (Token[]) = Token.Raw                                  -> `null, result`
-                         | [NamedExpr:p [Token.Arrow:_ Token.Raw:r]?] -> `p, r`
+  rule match : (Token[]) = Token.Raw                                  -> `RulePart(null, result)`
+                         | [NamedExpr:p [Token.Arrow:_ Token.Raw:r]?] -> `RulePart(p, r)`
 }
 
 data NamedExpr(Pattern?, name: Name?) {
-  rule match : (Token[]) = [Pattern:p [Token.Colon:_ Name:n]?] -> `p, n`
-                         | [Token.Colon:_ Name:n             ] -> `null, n`
+  rule match : (Token[]) = [Pattern:p [Token.Colon:_ Name:n]?] -> `NamedExpr(p, n)`
+                         | [Token.Colon:_ Name:n             ] -> `NamedExpr(null, n)`
 }
 
-data Pattern(Primary) { match : (Token[])         }
-= ZeroOrOne           { = [Primary Token.Query:_] }
-| ZeroOrMore          { = [Primary Token.Star:_ ] }
-| OneOrMore           { = [Primary Token.Plus:_ ] }
-| Primary             { = [Primary              ] }
+data Pattern(Primary) = ZeroOrOne | ZeroOrMore | OneOrMore | Primary {
+  rule match : (Token[]) = [Primary Token.Query:_] -> `ZeroOrOne(result)`
+                         | [Primary Token.Star:_]  -> `ZeroOrMore(result)`
+                         | [Primary Token.Plus:_]  -> `OneOrMore(result)`
+                         | [Primary]               -> `Primary(result)`
+}
 
-data Primary                                       { match : (Token[])                                                                            }
-= Destructuring(name, subexprs: NamedExpr[])       { = [Name:n Token.LeftParen [NamedExpr [Token.Comma NamedExpr]*]:s Token.RightBrace] -> `n, s` }
-| Sequence(NamedExpr[])                            { = [Token.LeftSquare NamedExpr* Token.RightSquare                                 ]           }
-| Name(Name)                                       { = [Name                                                                          ]           }
-| Range(left: Token.Literal, right: Token.Literal) { = [Token.Literal:l Token.DotDot Token.Literal:r                                  ] -> `l, r` }
-| Literal(Token.Literal)                           { = [Token.Literal                                                                 ]           }
-| Dot                                              { = [Token.Dot                                                                     ]           }
-| Dollar                                           { = [Token.Dollar                                                                  ]           }
+data Primary = Destructuring(name, subexprs: NamedExpr[])
+             | Sequence(NamedExpr[]) | Name(Name)
+             | Range(left: Token.Literal, right: Token.Literal)
+             | Literal(Token.Literal) | Dot | Dollar {
+  rule match : (Token[]) = [Name:n Token.LeftParen [NamedExpr [Token.Comma NamedExpr]*]:s Token.RightBrace] -> `Destructuring(n, s)`
+                         | [Token.LeftSquare NamedExpr*:n Token.RightSquare]                                -> `Sequence(n)`
+                         | [Name]                                                                           -> `Name(result)`
+                         | [Token.Literal:l Token.DotDot Token.Literal:r]                                   -> `Range(l, r)`
+                         | [Token.Literal]                                                                  -> `Literal(result)`
+                         | [Token.Dot]                                                                      -> `Dot`
+                         | [Token.Dollar]                                                                   -> `Dollar`
+}
