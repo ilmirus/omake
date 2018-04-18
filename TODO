@@ -1,0 +1,7 @@
+Questions:
+Should I force result_type of match?
+Should I force result_type at all?
+
+TODO:
+Merge lexer and parser after bootstrapping.
+Add interfaces/typeclasses.

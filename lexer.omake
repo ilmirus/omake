@@ -26,107 +26,81 @@ data Locus(row: long, column: long) {
 }
 
 data Input(string, locus: Locus) {
-  rule empty : (this) -> bool = `value.empty()`
-  rule front : (this) -> dchar = `empty() ? '\0' : value.front()`
+  rule empty : (this) -> bool = `return value.empty();`
+  rule front : (this) -> dchar = `return empty() ? '\0' : value.front();`
   rule popFront : (this) -> void = `if (empty()) return; locus.advance(front()); value.popFront();`
 }
 
 data Token(locus: Locus) = Colon | Equals | Whitespace | LeftParen | RightParen
                          | LeftBrace | RightBrace | Arrow | Comma | Data | Rule
-                         | Module | Import | LeftSquare | RightSquare | Literal(literal)
+                         | Module | Import | LeftSquare | RightSquare | LeftAngle
+                         | RightAngle | Literal(Literal)
                          | Identifier(string) | DotDot | Dot | Or | Star | Query
                          | Plus | Raw(string) | Dollar | Error(char) {
-  rule match : (Input) = [":"]                   -> `Colon(input.locus)`
-                       | ["="]                   -> `Equals(input.locus)`
-                       | [' '] | ['\t'] | ['\n'] -> `Whitespace(input.locus)`
-                       | ['(']                   -> `LeftParen(input.locus)`
-                       | [')']                   -> `RightParen(input.locus)`
-                       | ['{']                   -> `LeftBrace(input.locus)`
-                       | ['}']                   -> `RightBrace(input.locus)`
-                       | ["->"]                  -> `Arrow(input.locus)`
-                       | [',']                   -> `Comma(input.locus)`
-                       | ["data]"                -> `Data(input.locus)`
-                       | ["rule]"                -> `Rule(input.locus)`
-                       | ["module]"              -> `Module(input.locus)`
-                       | ["import]"              -> `Import(input.locus)`
-                       | ['[']                   -> `LeftSquare(input.locus)`
-                       | [']']                   -> `RightSquare(input.locus)`
-                       | [Literal]               -> `Literal(input.locus, result)`
-                       | [identifier]            -> `Identifier(input.locus, result)`
-                       | [".."]                  -> `DotDot(input.locus)`
-                       | ['.']                   -> `Dot(input.locus)`
-                       | ['|']                   -> `Or(input.locus)`
-                       | ['*']                   -> `Star(input.locus)`
-                       | ['?']                   -> `Query(input.locus)`
-                       | ['+']                   -> `Plus(input.locus)`
-                       | [raw_literal]           -> `Raw(input.locus, result)`
-                       | ['$']                   -> `Dollar(input.locus)`
-                       | [.]                     -> `Error(input.locus, result)`
-  rule toString : (this) -> string = Colon          -> `":"`
-                                   | Equals         -> `"="`
-                                   | Whitespace     -> `" "`
-                                   | LeftParen      -> `"("`
-                                   | RightParen     -> `")"`
-                                   | LeftBrace      -> `"{"`
-                                   | RightBrace     -> `"}"`
-                                   | Arrow          -> `"->"`
-                                   | Comma          -> `","`
-                                   | Data           -> `"data"`
-                                   | Rule           -> `"rule"`
-                                   | Module         -> `"module"`
-                                   | Import         -> `"import"`
-                                   | LeftSquare     -> `"["`
-                                   | RightSquare    -> `"]"`
-                                   | Literal(:v)    -> `v.toString()`
-                                   | Identifier(:v) -> `v`
-                                   | DotDot         -> `".."`
-                                   | Dot            -> `"."`
-                                   | Or             -> `"|"`
-                                   | Star           -> `"*"`
-                                   | Query          -> `"?"`
-                                   | Plus           -> `"+"`
-                                   | Raw(:v)        -> `"{" ~ v ~ "}"`
-                                   | Dollar         -> `"$"`
-                                   | Error(:v)      -> `v`
+  rule match : (Input) = [":"]                   -> `return Colon(input.locus);`
+                       | ["="]                   -> `return Equals(input.locus);`
+                       | [' '] | ['\t'] | ['\n'] -> `return Whitespace(input.locus);`
+                       | ['(']                   -> `return LeftParen(input.locus);`
+                       | [')']                   -> `return RightParen(input.locus);`
+                       | ['{']                   -> `return LeftBrace(input.locus);`
+                       | ['}']                   -> `return RightBrace(input.locus);`
+                       | ['<']                   -> `return LeftAngle(input.locus);`
+                       | ['>']                   -> `return RightAngle(input.locus);`
+                       | ["->"]                  -> `return Arrow(input.locus);`
+                       | [',']                   -> `return Comma(input.locus);`
+                       | ["data]"                -> `return Data(input.locus);`
+                       | ["rule]"                -> `return Rule(input.locus);`
+                       | ["module]"              -> `return Module(input.locus);`
+                       | ["import]"              -> `return Import(input.locus);`
+                       | ['[']                   -> `return LeftSquare(input.locus);`
+                       | [']']                   -> `return RightSquare(input.locus);`
+                       | [<Literal.match>]       -> `return Literal(input.locus, result);`
+                       | [<identifier>]          -> `return Identifier(input.locus, result);`
+                       | [".."]                  -> `return DotDot(input.locus);`
+                       | ['.']                   -> `return Dot(input.locus);`
+                       | ['|']                   -> `return Or(input.locus);`
+                       | ['*']                   -> `return Star(input.locus);`
+                       | ['?']                   -> `return Query(input.locus);`
+                       | ['+']                   -> `return Plus(input.locus);`
+                       | [<raw_literal>]         -> `return Raw(input.locus, result);`
+                       | ['$']                   -> `return Dollar(input.locus);`
+                       | [.]                     -> `return Error(input.locus, result);`
 }
 
 data Literal = Char(char)
              | String(string)
              | Null {
-  rule match : (Input) = ["'" c_char*:c "'"] -> `Char(check_character_literal(c, input.locus))`
-                       | ['"' c_char*:s '"'] -> `String(s)`
-                       | ["null"]            -> `Null`
-  rule toString : (this) -> string = Char(:v)   -> `"'" ~ v ~ "'"`
-                                   | String(:v) -> `"\"" ~ v ~ "\""`
-                                   | Null       -> `"null"`
+  rule match : (Input) = ["'" <c_char>*:c "'"] -> `return Char(check_character_literal(c, input.locus));`
+                       | ['"' <c_char>*:s '"'] -> `return String(s);`
+                       | ["null"]              -> `return Null;`
 }
 
-rule scan : (Input) -> Token[] = Token*:t -> `filter_out_whitespaces(t)`
+rule scan : (Input) -> Token[] = Token*:t -> `return filter_out_whitespaces(t);`
 
-rule filter_out_whitespaces : (Token[]) -> Token[] = (Token.Whitespace:_ .*)* -> `check_for_errors(result)`
+rule filter_out_whitespaces : (Token[]) -> Token[] = (Token.Whitespace:_ .*)* -> `return check_for_errors(result);`
 
 rule check_for_errors : (Token[])           -> Token[]
-                      = [.* Token.Error:e]  -> `error("Unexpected character: '" ~ e.value ~ "', e.locus)`
-                      | [.*              ]
+                      = [.* Token.Error:e]  -> `error("Unexpected character: '" ~ e.value ~ "', e.locus);`
+                      | [.*]
 
-rule identifier : (Input) -> string = identifier_non_digit identifier_rest*
+rule identifier : (Input) -> string = <identifier_non_digit> <identifier_rest>*
 
 rule identifier_non_digit : (Input) -> char = 'a' .. 'z' | 'A' .. 'Z' | '_'
 
-rule identifier_rest : (Input) -> char = identifier_non_digit | '0' .. '9'
+rule identifier_rest : (Input) -> char = <identifier_non_digit> | '0' .. '9'
 
 rule check_character_literal : (string, locus : Locus) -> char
-                             = [. $]                   -> `result`
-                             | [.]                     -> `error("wrong character literal: '" ~ input ~ "'", locus)`
+                             = [. $]                   -> `return result;`
+                             | [.]                     -> `error("wrong character literal: '" ~ input ~ "'", locus);`
 
 rule c_char : (Input)  -> char
-            = ['\\' .] -> `unescape_char(result)`
-            | [.]      -> `result`
+            = ['\\' .] -> `return unescape_char(result);`
+            | [.]
 
 rule unescape_char : (Input) -> char
-                   = 'n'     -> `'\n'`
-                   | '\\'    -> `'\\'`
-                   | 't'     -> `'\t'`
-                   | .       -> `result`
+                   = 'n'     -> `return '\n';`
+                   | '\\'    -> `return '\\';`
+                   | 't'     -> `return '\t';`
+                   | .
 
-rule raw_literal : (Input) -> string = ['`' .*:r '`'] -> `r`
+rule raw_literal : (Input) -> string = ['`':_ .* '`':_]

@@ -18,91 +18,111 @@ module omake.parser
 
 import {
   omake.lexer
+  std.algorithm
+  std.string
 }
 
 data Module(module_str: Name?, imports: Name[], declarations: Declaration[]) {
-  rule match : (Token[]) = [[Token.Module:_ Name:m]?
-                            [Token.Import:_ Token.LeftBrace:_ Name*:i Token.RightBrace:_]?
-                            Declaration*:d] -> `Module(m, i, d)`
-  rule meta : (this) -> void = Module(., [.*], [Declaration.meta*])
+  rule match : (Token[]) = [[Token.Module:_ <Name.match>:m]?
+                            [Token.Import:_ Token.LeftBrace:_ <Name.match>*:i Token.RightBrace:_]?
+                            <Declaration.match>*:d] -> `return Module(m, i, d);`
+  rule sema : (this) -> void = `foreach(d; declarations) d.sema();`
 }
 
-data Name(Token.Identifier[]) {
+data Name(string) {
   rule match : (Token[]) = [Token.Identifier [Token.Dot:_ Token:Identifier]*]
+                         -> `return Name(result.fold!((a, b) => "%s.%s".format(a.identifier, b.identifier))(""));`
 }
 
 data Declaration = Data(Data) | Rule(Rule) {
-  rule match : (Token[]) = [Token.Data:_ Data] -> `Data(result)`
-                         | [Token.Rule:_ Rule] -> `Rule(result)`
+  rule match : (Token[]) = [Token.Data:_ <Data.match>] -> `return Data(result);`
+                         | [Token.Rule:_ <Rule.match>] -> `return Rule(result);`
+  rule sema : (this) -> void = Data(d) -> `d.sema();`
+                             | Rule(r) -> `r.sema();`
 }
 
 data Data(header: DataHeader, values: DataHeader[], methods: Rule[]) {
-  rule match : (Token[]) = [Token.Data DataHeader:h
-                            [Token.Equals:_ DataHeader [Token.Or:_ DataHeader]*]?:v
-                            [Token.RightBrace:_ [Token.Rule:_ Rule]* Token.RightBrace:_]?:m] -> `Data(h, v, m)`
-  rule meta : (this) -> void = Data(DataHeader(:name, DataField.meta:_), [.*],
-                                    [[.*:_ Rule(Name([Token.Identifier("match")]), [.*], ., .)]:m])
-                             -> `m.result_type = Type.Normal(name)`
+  rule match : (Token[]) = [Token.Data <DataHeader.match>:h
+                            [Token.Equals:_ <DataHeader.match> [Token.Or:_ <DataHeader.match>]*]?:v
+                            [Token.LeftBrace:_ [Token.Rule:_ <Rule.match>]* Token.RightBrace:_]?:m] -> `return Data(h, v, m);`
+  rule sema : (this) -> void = `infer_match_result_type(); foreach(v; values) v.sema(); foreach(m; methods) m.sema();`
+  rule infer_match_result_type : (this) -> void = `foreach(m; methods) if (m.name == "match") m.result_type = Type(header);`
 }
 
-data DataHeader(name: Token.Identifier, fields: DataField[]) {
-  rule match : (Token[]) = [Token.Data Token.Identifier:i
-                            [Token.LeftParen:_ DataField [Token.Comma:_ DataField]* Token.RightParen:_]?:f] -> `DataHeader(i, f)`
-  rule meta : (this) -> void = DataHeader(., [DataField.meta*])
+data DataHeader(name: Name, fields: DataField[]) {
+  rule match : (Token[]) = [Token.Data <Name.match>:i
+                            [Token.LeftParen:_ <DataField.match>
+                             [Token.Comma:_ <DataField.match>]*
+                             Token.RightParen:_]?:f] -> `return DataHeader(i, f);`
+  rule sema : (this) -> void = `foreach(f; fields) f.sema();`
 }
 
 data DataField(name: Name?, type: Type) {
-  rule match : (Token[]) = [Name?:n Token.Colon Type:t] -> `DataField(n, t)`
-  rule meta : (this) -> () = this(null, .) -> `name = Name.Normal("value")`
+  rule match : (Token[]) = [<Name.match>?:n Token.Colon <Type.match>:t] -> `return DataField(n, t);`
+  rule sema : (this) -> void = `if (name is null) name = Name("value");`
 }
 
 data Type(Name) = Optional | Array | Normal {
-  rule match : (Token[]) = [Name Token.Query:_]                          -> `Optional(result)`
-                         | [Name Token.LeftSquare:_ Token:RightSquare:_] -> `Array(result)`
-                         | [Name]                                        -> `Normal(name)`
+  rule match : (Token[]) = [<Name.match> Token.Query:_]                          -> `return Optional(result);`
+                         | [<Name.match> Token.LeftSquare:_ Token:RightSquare:_] -> `return Array(result);`
+                         | [<Name.match>]                                        -> `return Normal(name);`
 }
 
-data DataValue(header: DataHeader, methods: RuleBody[]) {
-  rule match : (Token[]) = [DataHeader:h [Token.LeftBrace:_ [Token.Equals:_ RuleBody]* Token.RightBrace:_]?:r] -> `DataValue(h, r)`
-}
-
-data Rule(name: Name, input_types: Type[], result_type: Type?, body: RuleBody) {
+data Rule(name: Name, input_types: Type[], result_type: Type?, rule_body: RuleBody) {
   rule match : (Token[]) = [Name:n Token.Colon:_
-                            [Token.LeftParen:_ [Type [Token.Comma:_ Type]*]? Token.RightParen:_]:it
-                            [Token.Arrow:_ Type]:rt
-                            RuleBody:rb] -> `Rule(n, it, rt, rb)`
+                            [Token.LeftParen:_ [<Type.match> [Token.Comma:_ Type]*]? Token.RightParen:_]:it
+                            [Token.Arrow:_ <Type.match>]:rt
+                            <RuleBody.match>:rb] -> `return Rule(n, it, rt, rb);`
+  rule sema : (this) -> void = `rule_body.sema();`
 }
 
-data RuleBody(RulePart[]) {
-  rule match : (Token[]) = [RulePart [Token.Or:_ RulePart]*] -> `RuleBody(result)`
+data RuleBody() = Action(string)
+                | PatternMatching(RulePart[]) {
+  rule match : (Token[]) = [Token.Raw] -> `return Action(result.raw)`
+                         | [<RulePart.match> [Token.Or:_ <RulePart.match>]*] -> `return RuleBody(result);`
+  rule sema : (this) -> void = Action(_) -> `return;`
+                             | PatternMatching(parts) -> `
+    string action = "return result;"
+    for (int i = parts.length - 1; i >= 0; i--) {
+      if (parts[i].action is null) {
+        parts[i].action = action;
+      } else {
+        action = parts[i].action;
+      }
+    }`
 }
 
-data RulePart(NamedExpr, action: Token.Raw?) {
-  rule match : (Token[]) = Token.Raw                                  -> `RulePart(null, result)`
-                         | [NamedExpr:p [Token.Arrow:_ Token.Raw:r]?] -> `RulePart(p, r)`
+data RulePart(NamedExpr, action: string?) {
+  rule match : (Token[]) = [<NamedExpr.match>:p [Token.Arrow:_ Token.Raw:r]?] -> `return RulePart(p, r.raw);`
 }
 
-data NamedExpr(Pattern?, name: Name?) {
-  rule match : (Token[]) = [Pattern:p [Token.Colon:_ Name:n]?] -> `NamedExpr(p, n)`
-                         | [Token.Colon:_ Name:n             ] -> `NamedExpr(null, n)`
+data NamedExpr(Repetition?, name: Name?) {
+  rule match : (Token[]) = [<Repetition.match>:p [Token.Colon <Name.match>:n]?] -> `return NamedExpr(p, n);`
+                         | [Token.Colon <Name.match>:n]                         -> `return NamedExpr(null, n);`
 }
 
-data Pattern(Primary) = ZeroOrOne | ZeroOrMore | OneOrMore | Primary {
-  rule match : (Token[]) = [Primary Token.Query:_] -> `ZeroOrOne(result)`
-                         | [Primary Token.Star:_]  -> `ZeroOrMore(result)`
-                         | [Primary Token.Plus:_]  -> `OneOrMore(result)`
-                         | [Primary]               -> `Primary(result)`
+data Repetition(Primary) = ZeroOrOne | ZeroOrMore | OneOrMore | Primary {
+  rule match : (Token[]) = [<Primary.match> Token.Query:_] -> `return ZeroOrOne(result);`
+                         | [<Primary.match> Token.Star:_]  -> `return ZeroOrMore(result);`
+                         | [<Primary.match> Token.Plus:_]  -> `return OneOrMore(result);`
+                         | [<Primary.match>]               -> `return Primary(result);`
 }
 
-data Primary = Destructuring(name, subexprs: NamedExpr[])
+data Primary = Pattern(Pattern) | Call(Name)
              | Sequence(NamedExpr[]) | Name(Name)
-             | Range(left: Token.Literal, right: Token.Literal)
-             | Literal(Token.Literal) | Dot | Dollar {
-  rule match : (Token[]) = [Name:n Token.LeftParen [NamedExpr [Token.Comma NamedExpr]*]:s Token.RightBrace] -> `Destructuring(n, s)`
-                         | [Token.LeftSquare NamedExpr*:n Token.RightSquare]                                -> `Sequence(n)`
-                         | [Name]                                                                           -> `Name(result)`
-                         | [Token.Literal:l Token.DotDot Token.Literal:r]                                   -> `Range(l, r)`
-                         | [Token.Literal]                                                                  -> `Literal(result)`
-                         | [Token.Dot]                                                                      -> `Dot`
-                         | [Token.Dollar]                                                                   -> `Dollar`
+             | Range(left: Literal, right: Literal)
+             | Literal(Literal) | Dot | Dollar {
+  rule match : (Token[]) = [Token.LeftAngle <Name.match>:n Token.RightAngle]         -> `return Call(n);`
+                         | [Token.LeftSquare <NamedExpr.match>*:n Token.RightSquare] -> `return Sequence(n);`
+                         | [Token.Literal:l Token.DotDot Token.Literal:r]            -> `return Range(l.literal, r.literal);`
+                         | [Token.Literal]                                           -> `return Literal(result.literal);`
+                         | [Token.Dot]                                               -> `return Dot;`
+                         | [Token.Dollar]                                            -> `return Dollar;`
+                         | [<Pattern.match>]                                         -> `return Pattern(result);`
+                         | [<Name.match>]                                            -> `return Name(result);`
+}
+
+data Pattern(name: Name, subs: Pattern[]) {
+  rule match : (Token[]) = [<Name.match>:n [Token.LeftParen:_ <Pattern.match> [Token.Comma:_ <Pattern.match>]*]:s
+                         -> `return Pattern(n, s);`
 }
